@@ -35,6 +35,7 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+
 /**
  * Hash table based implementation of the <tt>Map</tt> interface.  This
  * implementation provides all of the optional map operations, and permits
@@ -133,6 +134,11 @@ import java.util.function.Function;
  * @see     TreeMap
  * @see     Hashtable
  * @since   1.2
+ * 
+ */
+
+/**
+ * 对于HashTable 形式的字典的实现，主要关注一下两点: 1.散列算法 2.散列碰撞的解决方案
  */
 public class HashMap<K,V> extends AbstractMap<K,V>
     implements Map<K,V>, Cloneable, Serializable {
@@ -230,7 +236,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      */
 
     /**
-     * The default initial capacity - MUST be a power of two.
+     * The default initial capacity - MUST be a power of two. (原因:计算机计算2的n次方非常快，左移右移操作)
      */
     static final int DEFAULT_INITIAL_CAPACITY = 1 << 4; // aka 16
 
@@ -274,7 +280,9 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     /**
      * Basic hash bin node, used for most entries.  (See below for
      * TreeNode subclass, and in LinkedHashMap for its Entry subclass.)
+     * 采用分离链方式解决散列冲突，不过jdk1.8 较之前版本做了些许优化
      */
+    
     static class Node<K,V> implements Map.Entry<K,V> {
         final int hash;
         final K key;
@@ -612,7 +620,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     }
 
     /**
-     * Implements Map.put and related methods
+     * Implements Map.put and related methods （实现put以及相关方法）
      *
      * @param hash hash for key
      * @param key the key
@@ -623,42 +631,56 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      */
     final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
                    boolean evict) {
+    	//p 分离链结构链表的头节点
         Node<K,V>[] tab; Node<K,V> p; int n, i;
+        
+        //如果散列表未初始化，则先初始化散列表 并 获取散列表length
         if ((tab = table) == null || (n = tab.length) == 0)
-            n = (tab = resize()).length;
+            n = (tab = resize()).length; //resize 表用于初始化表或扩容时增大表大小（2倍）
+        
+        //如果put 的 key 未发生散列碰撞，这创建节点 ((n - 1) & hash -- 散列算法)
         if ((p = tab[i = (n - 1) & hash]) == null)
             tab[i] = newNode(hash, key, value, null);
+        
+        //产生散列碰撞情况
         else {
             Node<K,V> e; K k;
+            
+            //如果put的key 与 散列冲突的key 相等, 直接覆盖原值
             if (p.hash == hash &&
                 ((k = p.key) == key || (key != null && key.equals(k))))
                 e = p;
+            
+            //如果p是 TreeNode类型 调用 TreeNode 的put 操作，(jdk1.8 对于HashMap的优化)
             else if (p instanceof TreeNode)
                 e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
+            
+            //搜索链表，直到在链表尾部插入新节点或找到了相同的值才停止
             else {
+            	//bin(容器/箱子含义) binCount表示链表长度
                 for (int binCount = 0; ; ++binCount) {
-                    if ((e = p.next) == null) {
+                    if ((e = p.next) == null) {  //下一个节点不为空
                         p.next = newNode(hash, key, value, null);
-                        if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
-                            treeifyBin(tab, hash);
+                        if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st,链表超过了大小限制
+                            treeifyBin(tab, hash); //将链表转换成树结构
                         break;
                     }
                     if (e.hash == hash &&
-                        ((k = e.key) == key || (key != null && key.equals(k))))
+                        ((k = e.key) == key || (key != null && key.equals(k))))  //检查的节点相等
                         break;
-                    p = e;
+                    p = e; //检查下一个节点
                 }
             }
             if (e != null) { // existing mapping for key
                 V oldValue = e.value;
                 if (!onlyIfAbsent || oldValue == null)
                     e.value = value;
-                afterNodeAccess(e);
+                afterNodeAccess(e);	// Callbacks to allow LinkedHashMap post-actions
                 return oldValue;
             }
         }
         ++modCount;
-        if (++size > threshold)
+        if (++size > threshold) //超过临界值扩容
             resize();
         afterNodeInsertion(evict);
         return null;
